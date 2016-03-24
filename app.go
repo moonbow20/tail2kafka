@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"gopkg.in/Shopify/sarama.v1"
 	"github.com/hpcloud/tail"
 	"github.com/codegangsta/cli"
@@ -13,7 +13,7 @@ import (
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "tail-kafka"
+	app.Name = "tail2kafka"
 	app.Version = "0.1"
 	app.Usage = "Tail a file (like a log file) and send the output to a Kafka topic"
 	app.EnableBashCompletion = true
@@ -37,8 +37,7 @@ func main() {
 
 func run(c *cli.Context) {
 	var address = strings.Split(c.String("server"), ",")
-	var topic = "kshop-webapi-log"//c.String("topic")
-	fmt.Print(address)
+	var topic = c.String("topic")
 
 	var asyncProducer = newAccessLogProducer(address)
 
