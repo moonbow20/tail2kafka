@@ -2,12 +2,12 @@ package main
 
 import (
 	//"fmt"
-	"gopkg.in/Shopify/sarama.v1"
-	"github.com/hpcloud/tail"
 	"github.com/codegangsta/cli"
+	"github.com/hpcloud/tail"
+	"gopkg.in/Shopify/sarama.v1"
+	"log"
 	"os"
 	"strings"
-	"log"
 	"time"
 )
 
@@ -23,6 +23,7 @@ func main() {
 			ShortName: "t",
 			Usage:     "tail log file and send to kafka",
 			Flags: []cli.Flag{
+				cli.BoolFlag{Name: "debug"},
 				cli.StringFlag{Name: "logdir", Value: "/var/log/apache2/access_log", Usage: "log file (absolute path)"},
 				cli.StringFlag{Name: "server", Value: "", Usage: "Kafka server location with port `localhost:9092`"},
 				cli.StringFlag{Name: "topic", Value: "apache", Usage: "Kafka queue topic"},
@@ -38,31 +39,34 @@ func main() {
 func run(c *cli.Context) {
 	var address = strings.Split(c.String("server"), ",")
 	var topic = c.String("topic")
+	var debug = c.Bool("debug")
 
 	var asyncProducer = newAccessLogProducer(address)
 
 	t, err := tail.TailFile(c.String("logdir"), tail.Config{Follow: true})
 	for line := range t.Lines {
+		//go func(asyncProducer sarama.AsyncProducer) {
 		asyncProducer.Input() <- &sarama.ProducerMessage{
 			Topic: topic,
 			Value: sarama.StringEncoder(line.Text),
+		}
+		//}(asyncProducer)
+		if debug {
+			log.Println(line.Text)
 		}
 	}
 	if err != nil {
 		panic(err)
 	}
 
-
 }
 
 func newAccessLogProducer(brokerList []string) sarama.AsyncProducer {
 
-	// For the access log, we are looking for AP semantics, with high throughput.
-	// By creating batches of compressed messages, we reduce network I/O at a cost of more latency.
 	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForLocal       // Only wait for the leader to ack
-	config.Producer.Compression = sarama.CompressionSnappy   // Compress messages
-	config.Producer.Flush.Frequency = 500 * time.Millisecond // Flush batches every 500ms
+	config.Producer.RequiredAcks = sarama.WaitForLocal
+	config.Producer.Compression = sarama.CompressionSnappy
+	config.Producer.Flush.Frequency = 500 * time.Millisecond
 
 	producer, err := sarama.NewAsyncProducer(brokerList, config)
 	if err != nil {
