@@ -24,7 +24,7 @@ func main() {
 			Usage:     "tail log file and send to kafka",
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "debug"},
-				cli.StringFlag{Name: "logdir", Value: "/var/log/apache2/access_log", Usage: "log file (absolute path)"},
+				cli.StringFlag{Name: "logdir", Value: "/var/log/apache2/access_log.*", Usage: "log file (absolute path)"},
 				cli.StringFlag{Name: "server", Value: "", Usage: "Kafka server location with port `localhost:9092`"},
 				cli.StringFlag{Name: "topic", Value: "apache", Usage: "Kafka queue topic"},
 			},
@@ -36,14 +36,14 @@ func main() {
 	app.Run(os.Args)
 }
 
-func run(c *cli.Context) {
-	var address = strings.Split(c.String("server"), ",")
-	var topic = c.String("topic")
-	var debug = c.Bool("debug")
+func run(cli *cli.Context) {
+	var address = strings.Split(cli.String("server"), ",")
+	var topic = cli.String("topic")
+	var debug = cli.Bool("debug")
 
 	var asyncProducer = newAccessLogProducer(address)
 
-	t, err := tail.TailFile(c.String("logdir"), tail.Config{Follow: true})
+	t, err := tail.TailFile(cli.String("logdir"), tail.Config{Follow: true})
 	for line := range t.Lines {
 		//go func(asyncProducer sarama.AsyncProducer) {
 		asyncProducer.Input() <- &sarama.ProducerMessage{
