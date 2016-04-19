@@ -10,6 +10,7 @@ import (
 	"sync"
 	"fmt"
 	"github.com/hpcloud/tail"
+	"io/ioutil"
 )
 
 func main() {
@@ -38,19 +39,30 @@ func main() {
 	app.Run(os.Args)
 }
 
-func watcher(logDir string, queue  chan <- tail.Tail) {
+func watcher(logDir string) {
+	files, err := ioutil.ReadDir(logDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileList := []string{}
+	for _, file := range files {
+		if file.IsDir() == false {
+			fileList = append(fileList, file.Name())
+		}
+	}
+	for _, file := range fileList {
+		fmt.Println(file)
+	}
 
 }
 
-func tailingFile(file string ) {
+func tailingFile(file string )(*tail.Tail) {
+
 	t, err := tail.TailFile(file, tail.Config{Follow: true})
 	if err != nil {
 		panic(err)
 	}
-
-	for line := range t.Lines {
-		fmt.Print(line.Text)
-	}
+	return t
 }
 
 func run(cli *cli.Context) {
@@ -60,13 +72,25 @@ func run(cli *cli.Context) {
 	queue := make(chan tail.Tail)
 	defer close(queue)
 
+	wg.Add(1)
+	go func(server string, topic string, Tail *tail.Tail) {
+		defer wg.Done()
+		var address = strings.Split(server, ",")
+		var asyncProducer = newAccessLogProducer(address)
+		defer asyncProducer.Close()
+
+		for line := range Tail.Lines {
+			asyncProducer.Input() <- &sarama.ProducerMessage{
+				Topic: topic,
+				Value: sarama.StringEncoder(line.Text),
+			}
+		}
+	}(cli.String("server"), cli.String("topic"), nil)
+
+	wg.Add(1)
 	go func() {
-		wg.Done()
-		sendLogs(cli.String("server"), cli.String("topic"), queue)
-	}()
-	go func() {
-		wg.Done()
-		watcher(logDir, queue)
+		defer wg.Done()
+		watcher(logDir)
 	}()
 	wg.Wait()
 	fmt.Println("Done")
@@ -90,15 +114,3 @@ func newAccessLogProducer(brokerList []string) sarama.AsyncProducer {
 	return producer
 }
 
-func sendLogs(server string, topic string, Tail *tail.Tail) {
-	var address = strings.Split(server, ",")
-	var asyncProducer = newAccessLogProducer(address)
-	defer asyncProducer.Close()
-
-	for line := range Tail.Lines {
-		asyncProducer.Input() <- &sarama.ProducerMessage{
-			Topic: topic,
-			Value: sarama.StringEncoder(line.Text),
-		}
-	}
-}
